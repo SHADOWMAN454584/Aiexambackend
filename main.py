@@ -44,3 +44,7 @@ app.include_router(tests.router, prefix="/api/tests", tags=["Tests"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
 app.include_router(ocr.router, prefix="/api/ocr", tags=["OCR"])
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
