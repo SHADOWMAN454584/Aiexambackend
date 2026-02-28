@@ -271,3 +271,22 @@ async def delete_document(doc_id: str, user_id: str = Depends(get_current_user_i
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete document: {str(e)}",
         )
+
+
+@router.get("/{doc_id}/tests")
+async def get_document_tests(doc_id: str, user_id: str = Depends(get_current_user_id)):
+    """Get all AI-generated tests linked to a specific document."""
+    try:
+        doc = db.get_document_by_id(doc_id)
+        if not doc or doc.get("user_id") != user_id:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        tests = db.get_tests_by_document(doc_id)
+        return tests
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch document tests: {str(e)}",
+        )

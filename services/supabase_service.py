@@ -372,6 +372,23 @@ def create_test_from_document(user_id: str, document_id: str, title: str,
     return res.data[0] if res.data else data
 
 
+def get_tests_by_document(document_id: str) -> list:
+    """Get all tests generated from a specific document."""
+    client = get_client()
+    res = (
+        client.table("tests")
+        .select("*, questions(count)")
+        .eq("document_id", document_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    tests = []
+    for t in res.data:
+        t["question_count"] = t.pop("questions", [{}])[0].get("count", 0) if t.get("questions") else 0
+        tests.append(t)
+    return tests
+
+
 def bulk_insert_questions(questions: list) -> list:
     """Insert multiple questions at once."""
     client = get_client()

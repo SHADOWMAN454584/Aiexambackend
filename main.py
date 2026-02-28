@@ -1,7 +1,32 @@
 """
 ExamAI Backend — FastAPI Entry Point
 AI-Powered Competitive Exam Performance Analytics API
+
+Run locally:   python main.py
+Deployed on:   Vercel (via vercel.json)
 """
+import subprocess
+import sys
+import os
+
+
+def _ensure_dependencies():
+    """Auto-install requirements.txt if a key package is missing."""
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
+    except ImportError:
+        print("[*] First run — installing dependencies …")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--quiet"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+
+
+if __name__ == "__main__":
+    _ensure_dependencies()
+
+# ── App setup (always runs — needed for Vercel and local) ─────────
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -48,4 +73,11 @@ app.include_router(documents.router, prefix="/api/documents", tags=["Documents"]
 
 if __name__ == "__main__":
     import uvicorn
+    print()
+    print("=" * 55)
+    print("  ExamAI Backend running at http://localhost:8000")
+    print("  API docs at        http://localhost:8000/docs")
+    print("  Press Ctrl+C to stop")
+    print("=" * 55)
+    print()
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
