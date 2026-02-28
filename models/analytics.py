@@ -66,3 +66,25 @@ class ScannedPaperOut(BaseModel):
     questions_extracted: int = 0
     status: str = "processing"
     created_at: Optional[str] = None
+
+
+class DocumentOut(BaseModel):
+    id: str
+    filename: str
+    file_url: Optional[str] = None
+    file_size: int = 0
+    mime_type: str
+    page_count: int = 0
+    extracted_text: Optional[str] = None
+    subject: Optional[str] = None
+    exam_type: str = "JEE Main"
+    status: str = "processing"
+    created_at: Optional[str] = None
+
+
+class DocumentTestRequest(BaseModel):
+    document_id: str
+    num_questions: int = 10
+    difficulty: str = "Medium"  # Easy | Medium | Hard | Mixed
+    exam_type: str = "JEE Main"
+    subject: Optional[str] = None  # override auto-detected subject

@@ -44,6 +44,8 @@ class TestOut(BaseModel):
     total_marks: int
     created_at: Optional[str] = None
     question_count: Optional[int] = None
+    document_id: Optional[str] = None
+    is_ai_generated: bool = False
 
 
 class TestSubmission(BaseModel):

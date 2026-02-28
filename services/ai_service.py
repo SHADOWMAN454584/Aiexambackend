@@ -349,3 +349,220 @@ def predict_score(performance: Dict, exam_type: str = "JEE Main") -> Dict:
         "confidence": "medium" if performance.get("total_questions", 0) > 50 else "low",
         "overall_accuracy": overall_accuracy,
     }
+
+
+# ─── Document-based Test Generation ───────────────────────────────
+
+
+def _detect_subject(text: str) -> str:
+    """Try to auto-detect the primary subject of the extracted text."""
+    text_lower = text.lower()
+    keywords = {
+        "Physics": ["velocity", "acceleration", "force", "energy", "momentum", "electric",
+                     "magnetic", "wave", "optics", "thermodynamic", "newton", "circuit",
+                     "gravity", "kinematics", "torque", "capacitor", "resistor"],
+        "Chemistry": ["element", "compound", "reaction", "mole", "periodic table", "bond",
+                       "oxidation", "acid", "base", "organic", "inorganic", "ion",
+                       "equilibrium", "enthalpy", "electron configuration", "valence"],
+        "Maths": ["integral", "derivative", "matrix", "vector", "equation", "function",
+                   "trigonometry", "probability", "calculus", "algebra", "geometry",
+                   "polynomial", "differential", "limit", "logarithm", "sequence"],
+        "Biology": ["cell", "gene", "dna", "rna", "protein", "organism", "evolution",
+                     "ecology", "enzyme", "photosynthesis", "respiration", "mitosis",
+                     "chromosome", "mutation", "anatomy", "taxonomy"],
+    }
+    scores = {}
+    for subject, words in keywords.items():
+        scores[subject] = sum(1 for w in words if w in text_lower)
+    best = max(scores, key=scores.get)
+    return best if scores[best] >= 2 else "General"
+
+
+def _extract_topics(text: str, subject: str) -> List[str]:
+    """Extract likely topics from the text based on subject."""
+    import re
+    topic_keywords = {
+        "Physics": ["Kinematics", "Newton's Laws", "Work Energy Power", "Gravitation",
+                     "Rotational Motion", "Thermodynamics", "Waves", "Optics",
+                     "Electrostatics", "Current Electricity", "Magnetism",
+                     "Electromagnetic Induction", "Modern Physics", "Semiconductors"],
+        "Chemistry": ["Atomic Structure", "Chemical Bonding", "Thermochemistry",
+                       "Equilibrium", "Electrochemistry", "Organic Chemistry",
+                       "Aldehydes Ketones", "Coordination Compounds", "Solutions",
+                       "Chemical Kinetics", "Surface Chemistry", "Periodic Properties",
+                       "p-Block Elements", "d-Block Elements", "Polymers"],
+        "Maths": ["Sets Relations", "Complex Numbers", "Quadratic Equations",
+                   "Permutations Combinations", "Binomial Theorem", "Sequences Series",
+                   "Straight Lines", "Circles", "Conic Sections", "Limits Continuity",
+                   "Differentiation", "Integration", "Differential Equations",
+                   "Vectors", "3D Geometry", "Probability", "Matrices Determinants",
+                   "Trigonometry", "Statistics"],
+        "Biology": ["Cell Biology", "Genetics", "Evolution", "Ecology", "Human Physiology",
+                     "Plant Physiology", "Molecular Biology", "Biotechnology",
+                     "Reproduction", "Morphology", "Taxonomy"],
+    }
+    candidates = topic_keywords.get(subject, ["General"])
+    text_lower = text.lower()
+    found = [t for t in candidates if t.lower().replace("'", "").split()[0] in text_lower]
+    return found if found else candidates[:3]
+
+
+async def generate_test_from_document(
+    extracted_text: str,
+    num_questions: int = 10,
+    difficulty: str = "Medium",
+    exam_type: str = "JEE Main",
+    subject: Optional[str] = None,
+) -> List[Dict]:
+    """
+    Generate MCQ test questions from document content.
+    Uses OpenAI if available, otherwise falls back to a rule-based stub.
+    """
+    if not subject:
+        subject = _detect_subject(extracted_text)
+
+    topics = _extract_topics(extracted_text, subject)
+
+    # Truncate text for the prompt (keep first ~6000 chars to stay within token limits)
+    content_snippet = extracted_text[:6000]
+
+    if OPENAI_AVAILABLE:
+        return await _generate_test_with_ai(
+            content_snippet, num_questions, difficulty, exam_type, subject, topics
+        )
+    else:
+        return _generate_test_rule_based(
+            content_snippet, num_questions, difficulty, exam_type, subject, topics
+        )
+
+
+async def _generate_test_with_ai(
+    content: str,
+    num_questions: int,
+    difficulty: str,
+    exam_type: str,
+    subject: str,
+    topics: List[str],
+) -> List[Dict]:
+    """Use OpenAI to generate questions from document content."""
+    difficulty_instruction = (
+        f"All questions should be {difficulty} difficulty."
+        if difficulty != "Mixed"
+        else "Include a mix of Easy, Medium, and Hard questions."
+    )
+
+    prompt = f"""You are an expert {exam_type} exam question paper setter.
+
+Based on the following study material, generate exactly {num_questions} high-quality MCQ questions.
+
+STUDY MATERIAL:
+\"\"\"
+{content}
+\"\"\"
+
+REQUIREMENTS:
+- Subject: {subject}
+- Relevant topics: {', '.join(topics)}
+- {difficulty_instruction}
+- Each question must have exactly 4 options (A, B, C, D)
+- Exactly one correct answer per question
+- Include a brief explanation for the correct answer
+- Marks: 4 for correct, 1 negative for incorrect (standard {exam_type} pattern)
+- Questions should test conceptual understanding, not just recall
+
+Return a JSON array where each element has these exact keys:
+  "subject": string,
+  "topic": string,
+  "difficulty": "Easy" | "Medium" | "Hard",
+  "question_text": string,
+  "option_a": string,
+  "option_b": string,
+  "option_c": string,
+  "option_d": string,
+  "correct_option": "A" | "B" | "C" | "D",
+  "explanation": string,
+  "marks": 4,
+  "negative_marks": 1
+
+Return ONLY the JSON array, no extra text."""
+
+    try:
+        client = openai.OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=4000,
+        )
+
+        import json
+        raw = response.choices[0].message.content
+        # Handle markdown code blocks
+        if "```json" in raw:
+            raw = raw.split("```json")[1].split("```")[0]
+        elif "```" in raw:
+            raw = raw.split("```")[1].split("```")[0]
+
+        questions = json.loads(raw.strip())
+
+        # Validate & normalise each question
+        valid = []
+        for q in questions:
+            if all(k in q for k in ("question_text", "option_a", "option_b",
+                                     "option_c", "option_d", "correct_option")):
+                q.setdefault("subject", subject)
+                q.setdefault("topic", topics[0] if topics else "General")
+                q.setdefault("difficulty", difficulty if difficulty != "Mixed" else "Medium")
+                q.setdefault("marks", 4)
+                q.setdefault("negative_marks", 1)
+                q.setdefault("explanation", "")
+                if q["correct_option"] in ("A", "B", "C", "D"):
+                    valid.append(q)
+        return valid
+
+    except Exception:
+        # Fallback to rule-based
+        return _generate_test_rule_based(
+            content, num_questions, difficulty, exam_type, subject, topics
+        )
+
+
+def _generate_test_rule_based(
+    content: str,
+    num_questions: int,
+    difficulty: str,
+    exam_type: str,
+    subject: str,
+    topics: List[str],
+) -> List[Dict]:
+    """
+    Fallback: generate placeholder questions when OpenAI is unavailable.
+    In production you'd want a real AI backend; this at least returns the right shape.
+    """
+    questions = []
+    diff_cycle = ["Easy", "Medium", "Hard"] if difficulty == "Mixed" else [difficulty]
+
+    for i in range(num_questions):
+        topic = topics[i % len(topics)] if topics else "General"
+        d = diff_cycle[i % len(diff_cycle)]
+        questions.append({
+            "subject": subject,
+            "topic": topic,
+            "difficulty": d,
+            "question_text": (
+                f"[Auto-generated Q{i + 1}] Based on the uploaded document, "
+                f"which of the following statements about {topic} is correct?"
+            ),
+            "option_a": f"Statement A about {topic}",
+            "option_b": f"Statement B about {topic}",
+            "option_c": f"Statement C about {topic}",
+            "option_d": f"Statement D about {topic}",
+            "correct_option": "A",
+            "explanation": (
+                f"This is a placeholder question. Enable OpenAI integration for "
+                f"AI-generated questions based on the uploaded document content."
+            ),
+            "marks": 4,
+            "negative_marks": 1,
+        })
+    return questions

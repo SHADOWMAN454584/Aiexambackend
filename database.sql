@@ -250,6 +250,42 @@ CREATE POLICY "scanned_papers: service role can all"
     WITH CHECK (TRUE);
 
 -- ============================================================
+-- 9. DOCUMENTS
+--    User-uploaded PDFs/images used for personalised test generation.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS documents (
+    id               UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id          UUID        NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+    filename         TEXT        NOT NULL,
+    file_url         TEXT,
+    file_size        INT         DEFAULT 0,           -- bytes
+    mime_type        TEXT        NOT NULL,
+    page_count       INT         DEFAULT 0,
+    extracted_text   TEXT,
+    subject          TEXT,                             -- auto-detected or user-specified
+    exam_type        TEXT        NOT NULL DEFAULT 'JEE Main',
+    status           TEXT        NOT NULL DEFAULT 'processing',  -- processing | completed | failed
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents (user_id);
+
+-- Add optional document_id FK on tests so AI-generated tests link back to the source doc
+ALTER TABLE tests ADD COLUMN IF NOT EXISTS document_id UUID REFERENCES documents (id) ON DELETE SET NULL;
+ALTER TABLE tests ADD COLUMN IF NOT EXISTS is_ai_generated BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Enable RLS for documents
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "documents: owner can view"
+    ON documents FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "documents: service role can all"
+    ON documents FOR ALL
+    WITH CHECK (TRUE);
+
+-- ============================================================
 -- STORAGE BUCKET  (run via Supabase dashboard or API)
 -- ============================================================
 -- Create a public bucket named "scanned-papers" for OCR image uploads.

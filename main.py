@@ -37,13 +37,14 @@ def health_check():
 
 
 # Import and include routers
-from routers import auth, tests, analytics, recommendations, ocr
+from routers import auth, tests, analytics, recommendations, ocr, documents
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(tests.router, prefix="/api/tests", tags=["Tests"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
 app.include_router(ocr.router, prefix="/api/ocr", tags=["OCR"])
+app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 
 if __name__ == "__main__":
     import uvicorn

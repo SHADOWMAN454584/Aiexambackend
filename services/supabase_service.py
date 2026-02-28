@@ -302,3 +302,80 @@ def upload_file_to_storage(bucket: str, path: str, file_bytes: bytes, content_ty
     client = get_client()
     client.storage.from_(bucket).upload(path, file_bytes, {"content-type": content_type})
     return client.storage.from_(bucket).get_public_url(path)
+
+
+# ─── Documents ─────────────────────────────────────────────────────
+
+def save_document(user_id: str, filename: str, mime_type: str, file_size: int = 0,
+                  file_url: str = None, exam_type: str = "JEE Main",
+                  subject: str = None) -> dict:
+    """Save a document record."""
+    client = get_client()
+    data = {
+        "user_id": user_id,
+        "filename": filename,
+        "mime_type": mime_type,
+        "file_size": file_size,
+        "exam_type": exam_type,
+        "status": "processing",
+    }
+    if file_url:
+        data["file_url"] = file_url
+    if subject:
+        data["subject"] = subject
+    res = client.table("documents").insert(data).execute()
+    return res.data[0] if res.data else data
+
+
+def update_document(doc_id: str, updates: dict) -> dict:
+    """Update a document record."""
+    client = get_client()
+    res = client.table("documents").update(updates).eq("id", doc_id).execute()
+    return res.data[0] if res.data else {}
+
+
+def get_document_by_id(doc_id: str) -> dict:
+    """Fetch a single document by ID."""
+    client = get_client()
+    res = client.table("documents").select("*").eq("id", doc_id).single().execute()
+    return res.data
+
+
+def get_user_documents(user_id: str) -> list:
+    """Get all documents for a user."""
+    client = get_client()
+    res = (
+        client.table("documents")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return res.data
+
+
+def create_test_from_document(user_id: str, document_id: str, title: str,
+                              exam_type: str = "JEE Main", duration_minutes: int = 60,
+                              total_marks: int = 40) -> dict:
+    """Create a test record linked to a document."""
+    client = get_client()
+    data = {
+        "title": title,
+        "description": f"AI-generated test from uploaded document",
+        "exam_type": exam_type,
+        "duration_minutes": duration_minutes,
+        "total_marks": total_marks,
+        "document_id": document_id,
+        "is_ai_generated": True,
+    }
+    res = client.table("tests").insert(data).execute()
+    return res.data[0] if res.data else data
+
+
+def bulk_insert_questions(questions: list) -> list:
+    """Insert multiple questions at once."""
+    client = get_client()
+    if questions:
+        res = client.table("questions").insert(questions).execute()
+        return res.data
+    return []
