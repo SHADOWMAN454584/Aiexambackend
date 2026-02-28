@@ -16,8 +16,8 @@ from utils.helpers import get_current_user_id
 
 router = APIRouter()
 
-# Maximum upload size: 20 MB
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# Maximum upload size: 4.5 MB (Vercel serverless body limit)
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024  # 4 MB to stay safely under Vercel's 4.5 MB limit
 
 # Allowed MIME types
 ALLOWED_TYPES = [
@@ -32,35 +32,27 @@ ALLOWED_TYPES = [
 
 def _extract_text_from_pdf(file_bytes: bytes) -> dict:
     """
-    Extract text from a PDF using PyMuPDF (fitz).
-    Falls back to Tesseract OCR for scanned/image-only pages.
+    Extract text from a PDF using pdfplumber (pure Python, Vercel-compatible).
     """
     try:
-        import fitz  # PyMuPDF
+        import pdfplumber
     except ImportError:
         return {
-            "text": "[PDF] PyMuPDF not installed. Install pymupdf to enable PDF text extraction.",
+            "text": "[PDF] pdfplumber not installed. Install pdfplumber to enable PDF text extraction.",
             "page_count": 0,
         }
 
     try:
-        doc = fitz.open(stream=file_bytes, filetype="pdf")
-        page_count = len(doc)
+        pdf = pdfplumber.open(io.BytesIO(file_bytes))
+        page_count = len(pdf.pages)
         pages_text = []
 
-        for page in doc:
-            text = page.get_text("text")
+        for page in pdf.pages:
+            text = page.extract_text()
             if text and text.strip():
                 pages_text.append(text.strip())
-            else:
-                # Scanned / image page — fall back to OCR
-                pix = page.get_pixmap(dpi=200)
-                img_bytes = pix.tobytes("png")
-                ocr_text = ocr_service.extract_text_from_image(img_bytes)
-                if ocr_text and not ocr_text.startswith("[OCR"):
-                    pages_text.append(ocr_text)
 
-        doc.close()
+        pdf.close()
         return {
             "text": "\n\n".join(pages_text),
             "page_count": page_count,
